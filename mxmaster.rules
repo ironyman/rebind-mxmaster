@@ -1,0 +1,2 @@
+# Put this in /etc/udev/rules.d
+SUBSYSTEM == "bluetooth", ACTION == "add", RUN += "/usr/bin/rebind-mxmaster"

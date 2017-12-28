@@ -1,0 +1,51 @@
+#!/bin/bash
+# Requires glib2 and perl.
+# Also bluez-mxmaster from github.
+
+btaddr=$(echo "paired-devices" | \
+       	 bluetoothctl 2>/dev/null | \
+	 perl -ne '/^Device ([A-F0-9:]*) MX Master/ && print $1')
+
+if [[ -z $btaddr ]]; then
+	echo "MX Master not connected."
+	exit
+fi
+
+# From bluez,
+#	{ GDBUS_ASYNC_METHOD("WriteValue", GDBUS_ARGS({ "value", "ay" },
+#						{ "options", "a{sv}" }),
+function write() {
+	btaddr_part=$(tr : _ <<< $btaddr)
+	object=/org/bluez/hci0/dev_$btaddr_part/service001f/char0038
+	gdbus call -y -o "$object" \
+		-d "org.bluez" \
+		-m "org.bluez.GattCharacteristic1.WriteValue" \
+		"$1" "{}"
+}
+
+function massage_input() {
+	bytes=$(sed 's/\(..\)/0x\1, /g' <<< $1)
+	echo "[${bytes:0:-2}]"
+}
+
+# The order matters. We have to send 6 commands to rebind
+# the 6 mouse buttons.
+commands=(
+	ff083b00c30200c30000000000000000000000
+	ff083b00520200520000000000000000000000
+	# I button.
+	ff083b00c40200520000000000000000000000
+	# Forward and back button, looks like it's OS X specific.
+	# ff083b00560300000000000000000000000000
+	# ff083b00530300000000000000000000000000
+	# We can preserve original binding by zeroing here.
+	ff083b00000000000000000000000000000000
+	ff083b00000000000000000000000000000000
+	ff0b1b02100000000000000000000000000000
+)
+
+for c in ${commands[@]}; do
+	bytearray=$(massage_input $c)
+	echo "Writing $bytearray..."
+	write "$bytearray"
+done
